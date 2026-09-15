@@ -1,0 +1,17 @@
+{
+  "name": "questrade-mcp",
+  "version": "1.0.0",
+  "description": "Questrade Portfolio Management for Tars",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "test:auth": "node src/auth-check.js",
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "asciichart": "^1.5.25",
+    "axios": "^1.7.9",
+    "technicalindicators": "^3.1.0"
+  }
+}
