@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/main.js",
   "scripts": {
+    "test": "node --test test/*.test.js",
     "test:auth": "node src/auth-check.js",
     "start": "node src/main.js"
   },
