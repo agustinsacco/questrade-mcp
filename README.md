@@ -49,24 +49,55 @@ By default the server reads:
 Override the location with `QUESTRADE_TOKEN_FILE`. Never commit this file or
 place credentials in MCP arguments, source code, logs, or chat transcripts.
 
+The server rewrites this file after each refresh and adds the current access
+token and its expiry. To provision a new refresh token, replace the whole file
+with the two lines above.
+
 ## Token refresh lifecycle
 
-Questrade access tokens are short-lived and refresh tokens may rotate when they
-are exchanged. This server handles both cases:
+Questrade access tokens last 30 minutes. Each refresh token works once, and
+exchanging it returns a new refresh token and a new access token, which
+invalidates the previous access token. This server handles that as follows:
 
-1. It refreshes on startup/first API call when the access token is unavailable
-   or expired.
-2. It refreshes automatically every 25 minutes while the MCP process remains
-   alive.
-3. It atomically writes the newly returned refresh token to the credential file.
+1. It refreshes on the first API call when no valid access token is stored.
+2. It checks every 25 minutes while the MCP process is alive and refreshes
+   when the access token has expired.
+3. It atomically writes the new refresh token, access token, and expiry to the
+   credential file.
 4. It retries transient network/server failures and shares one refresh request
    between concurrent callers.
-5. A separate cron job is **not required** when the MCP host keeps the process
-   alive. A supervisor, scheduled job, or equivalent fallback is needed only
-   when the MCP process is routinely stopped or restarted.
 
-If a refresh token is revoked or expired, automatic refresh cannot recover it;
-a new token must be provisioned locally.
+### Multiple processes
+
+MCP hosts often start one server process per session, so several processes
+may share the credential file. They share one token chain instead of
+invalidating each other's tokens:
+
+- A process whose access token expired or was rejected first uses the access
+  token in the credential file if another process has already refreshed.
+- Refreshes take an exclusive lock file (`credentials.env.lock`) and always
+  use the refresh token currently in the file. A lock left by a crashed
+  process is taken over.
+- If Questrade rejects the refresh token, the server re-reads the file once in
+  case something else replaced it.
+
+### Keeping the token alive between sessions
+
+The server only refreshes while an MCP process is running. If none runs for
+longer than the refresh token's lifetime (about three days for Questrade), the
+token expires and automatic refresh cannot recover it; a new token must be
+provisioned locally. The same applies if the token is revoked.
+
+If your MCP host does not keep the server running, schedule `npm run test:auth`
+with cron, a systemd user timer, launchd, or similar, for example every 12
+hours. It refreshes the token when the stored access token has expired and is
+safe to run while MCP processes are active:
+
+```cron
+0 */12 * * * cd /path/to/questrade-mcp && npm run -s test:auth
+```
+
+This project does not install a scheduled job.
 
 ## Run
 
@@ -76,6 +107,15 @@ node src/main.js
 
 The server communicates over stdin/stdout using MCP JSON-RPC. Diagnostics are
 written to stderr.
+
+## Test
+
+```bash
+npm test
+```
+
+The tests run against a local fake of Questrade's token and API servers and
+never contact Questrade.
 
 ## Security model
 

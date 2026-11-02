@@ -18,12 +18,12 @@ export class QuestradeClient {
                 const originalRequest = error.config;
                 if (error.response?.status === 401 && !originalRequest._retry) {
                     originalRequest._retry = true;
-                    try {
-                        const newToken = await this.tokenManager.forceRefresh();
-                        originalRequest.headers.Authorization = `Bearer ${newToken.access_token}`;
-                        originalRequest.baseURL = newToken.api_server;
-                        return this.client(originalRequest);
-                    } catch (e) {}
+                    const rejectedToken = String(originalRequest.headers?.Authorization || '').replace(/^Bearer /, '');
+                    // Surface refresh failures (e.g. an expired refresh token) instead of the bare 401.
+                    const newToken = await this.tokenManager.forceRefresh(rejectedToken);
+                    originalRequest.headers.Authorization = `Bearer ${newToken.access_token}`;
+                    originalRequest.baseURL = newToken.api_server;
+                    return this.client(originalRequest);
                 }
                 return Promise.reject(error);
             }
