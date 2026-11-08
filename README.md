@@ -76,7 +76,8 @@ Node.js 20 or later. Agents get two things on top of the server:
 ### pi / Phosphor: one command
 
 ```bash
-pi install git:github.com/agustinsacco/questrade-mcp
+pi install npm:@saccolabs/questrade-mcp          # from npm
+pi install git:github.com/agustinsacco/questrade-mcp   # or straight from GitHub
 ```
 
 pi installs the npm dependencies. The package's extension registers the
@@ -92,7 +93,36 @@ Questrade is not signed in on <host>. In a terminal there, run: node <package>/b
 A `questrade` entry in `mcp.json` takes precedence over the package's
 registration.
 
-### Claude Code and other clients: `setup`
+### Claude Code, Claude Desktop, Cursor: no clone needed
+
+The package is on npm as
+[`@saccolabs/questrade-mcp`](https://www.npmjs.com/package/@saccolabs/questrade-mcp).
+`npx` downloads and runs it:
+
+```bash
+claude mcp add --scope user questrade -- npx -y @saccolabs/questrade-mcp
+```
+
+Other clients take the same command in their config:
+
+```json
+{ "mcpServers": { "questrade": { "command": "npx", "args": ["-y", "@saccolabs/questrade-mcp"] } } }
+```
+
+Then sign in, in a terminal on the same machine:
+
+```bash
+npx -y @saccolabs/questrade-mcp login
+```
+
+Every other command works the same way (`npx -y @saccolabs/questrade-mcp check`,
+`… setup`). When the server runs through npx, its sign-in messages show the
+npx command too. These clients don't install the `questrade-portfolio` skill. They get the
+same guide from the `questrade://guide` resource, and the start-here tool points
+to it. `npx -y @saccolabs/questrade-mcp setup` adds the server and a copy of the
+skill to Claude Code in one step.
+
+### From a clone: `setup`
 
 ```bash
 git clone https://github.com/agustinsacco/questrade-mcp && cd questrade-mcp && npm install

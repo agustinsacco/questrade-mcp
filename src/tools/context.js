@@ -15,7 +15,12 @@ export function registerContextTools(server, ctx) {
       'Start here. Returns how credentials are configured (and the exact sign-in command when they are missing), the accounts this login reaches, which one is the default, Questrade\'s server time and what the API cannot do. Works without credentials and then explains how to sign in.',
     handler: async () => {
       const auth = ctx.tokens.describe();
-      const out = { server: { readOnly: true, toolsets: ctx.config.toolsets }, auth, limitations: LIMITATIONS.summary };
+      const out = {
+        server: { readOnly: true, toolsets: ctx.config.toolsets },
+        auth,
+        guide: 'Read the questrade://guide resource (the questrade-portfolio skill) for the tool map. Key rules: pass accountId when there are several accounts; symbols are symbolIds or exact tickers (.TO for the TSX); state the account, period and currency of every figure; never ask for tokens in the chat.',
+        limitations: LIMITATIONS.summary,
+      };
       if (auth.mode === 'none') return { ...out, setup: ctx.tokens.setupHint() };
       const [{ accounts, userId }, time] = await Promise.all([ctx.listAccounts(), ctx.client.get('/v1/time')]);
       out.userId = userId;

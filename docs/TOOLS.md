@@ -1,6 +1,6 @@
 # Questrade: tools, resources and prompts
 
-Generated from questrade-mcp 2.0.0 by `npm run docs`; do not edit by hand.
+Generated from @saccolabs/questrade-mcp 2.0.1 by `npm run docs`; do not edit by hand.
 
 19 tools in 5 toolsets (19 read, 0 write), 2 resources and 3 prompts.
 Limit the toolsets with `QUESTRADE_MCP_TOOLSETS` (comma-separated).

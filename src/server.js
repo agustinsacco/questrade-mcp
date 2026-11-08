@@ -6,7 +6,7 @@ import { registerAccountTools } from './tools/accounts.js';
 import { registerMarketTools } from './tools/market.js';
 import { registerAnalysisTools } from './tools/analysis.js';
 import { registerReportTools } from './tools/reports.js';
-import { HOST, cli } from './cli.js';
+import { HOST, PACKAGE_DIR, cli } from './cli.js';
 import { LIMITATIONS_MARKDOWN } from './limitations.js';
 
 export const SERVER_NAME = 'questrade-mcp';
@@ -17,7 +17,7 @@ export function guideMarkdown() {
   const text = fs.readFileSync(new URL('../skills/questrade-portfolio/SKILL.md', import.meta.url), 'utf8').replace(/^---\n[\s\S]*?\n---\n+/, '');
   return text
     .replaceAll('node <package>/bin/questrade-mcp.js', cli())
-    .replaceAll('<package>', cli().replace(/^node /, '').replace(/\/bin\/questrade-mcp\.js$/, ''));
+    .replaceAll('<package>', PACKAGE_DIR);
 }
 
 export const INSTRUCTIONS = `Questrade brokerage, read-only. Call qt_get_context first; if credentials are missing or rejected the user signs in with ${cli('login')} in a terminal on ${HOST}. Full guide: the questrade://guide resource.

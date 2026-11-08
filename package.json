@@ -1,6 +1,6 @@
 {
-  "name": "questrade-mcp",
-  "version": "2.0.0",
+  "name": "@saccolabs/questrade-mcp",
+  "version": "2.0.1",
   "description": "Read-only MCP server for Questrade: accounts, balances, positions, activities, orders, quotes, option chains, candles, technicals and portfolio reports, with context-safe pagination. Also a pi package (server + skill).",
   "keywords": [
     "mcp",
@@ -65,5 +65,8 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
