@@ -71,6 +71,13 @@ function kind(a = {}) {
 }
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// Descriptions carry this machine's sign-in command and host; the docs use placeholders.
+const { HOST, cli } = await import(path.join(ROOT, 'src/cli.js'));
+const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const generic = (text) =>
+  String(text ?? '')
+    .replaceAll(cli(), `node <package>/bin/${pkg.name}.js`)
+    .replace(new RegExp(`\\bon ${escape(HOST)}\\b`, 'g'), 'on <host>');
 const all = await open(TOOLSETS);
 const info = all.client.getServerVersion();
 const { tools } = await all.client.listTools();
@@ -120,7 +127,7 @@ lines.push('', '## Prompts', '', '| Prompt | Arguments | What it does |', '|---|
 for (const p of prompts) lines.push(`| \`${p.name}\` | ${cell((p.arguments || []).map((a) => `${a.name}${a.required ? '' : '?'}`).join(', '))} | ${cell(p.description)} |`);
 lines.push('');
 
-const text = lines.join('\n');
+const text = generic(lines.join('\n'));
 if (process.argv.includes('--check')) {
   const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
   if (current !== text) {
