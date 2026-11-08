@@ -1,100 +1,136 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
- * The credentials file (KEY=value lines, mode 600) is the one source of truth
- * shared by every copy of the server on the machine: several agent sessions
- * each run their own process. Writes are atomic (temp file, fsync, rename)
- * and keep keys this module does not manage.
+ * Credentials live in a dotenv-style file outside the repository, mode 600,
+ * in a directory with mode 700. It is the one source of truth shared by every
+ * server process on the machine (agent hosts often run one per session):
+ * writes are atomic (temp file, fsync, rename) and keep unrelated lines, and
+ * refreshes hold a lock file (withFileLock).
  */
-export function credentialsFile(env = process.env) {
-    return env.QUESTRADE_TOKEN_FILE || path.join(os.homedir(), '.config', 'questrade-mcp', 'credentials.env');
+export const CREDENTIAL_KEYS = [
+  'QUESTRADE_REFRESH_TOKEN',
+  'QUESTRADE_ACCESS_TOKEN',
+  'QUESTRADE_ACCESS_TOKEN_EXPIRES_AT',
+  'QUESTRADE_API_SERVER',
+  'QUESTRADE_ACCOUNT_ID',
+  'QUESTRADE_MCP_HTTP_TOKEN',
+];
+
+export function parseEnvText(text) {
+  const values = {};
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  return values;
 }
 
-export function readCredentials(file) {
-    let text;
-    try {
-        text = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-        if (error.code === 'ENOENT') return { exists: false, values: {}, text: '' };
-        throw error;
-    }
-    const values = {};
-    for (const raw of text.split(/\r?\n/)) {
-        const match = raw.trim().match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-        if (!match) continue;
-        let value = match[2].trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-        values[match[1]] = value;
-    }
-    return { exists: true, values, text };
+export function readCredentialFile(file) {
+  try {
+    const stat = fs.statSync(file);
+    const text = fs.readFileSync(file, 'utf8');
+    return { exists: true, values: parseEnvText(text), text, mtimeMs: stat.mtimeMs, mode: stat.mode & 0o777 };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { exists: false, values: {}, text: '', mtimeMs: 0, mode: 0 };
+    throw error;
+  }
 }
 
-export function writeCredentials(file, updates) {
-    for (const value of Object.values(updates)) {
-        if (typeof value === 'string' && /[\r\n]/.test(value)) throw new Error('Credential values cannot contain newlines.');
+/** True when group or others can read the file. */
+export function isTooOpen(mode) {
+  return (mode & 0o077) !== 0;
+}
+
+function serialize(existingText, updates) {
+  const pending = new Map(Object.entries(updates));
+  const lines = existingText ? existingText.replace(/\n+$/, '').split(/\r?\n/) : [];
+  const out = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (match && pending.has(match[1])) {
+      const value = pending.get(match[1]);
+      pending.delete(match[1]);
+      if (value === null || value === undefined || value === '') continue; // removal
+      out.push(`${match[1]}=${value}`);
+    } else {
+      out.push(line);
     }
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    const current = readCredentials(file);
-    const pending = new Map(Object.entries(updates));
-    const lines = [];
-    for (const raw of current.text.split(/\r?\n/)) {
-        const key = raw.trim().match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/)?.[1];
-        if (key && pending.has(key)) {
-            const value = pending.get(key);
-            pending.delete(key);
-            if (value) lines.push(`${key}=${value}`);
-        } else if (raw !== '' || lines.length) lines.push(raw);
-    }
-    while (lines.length && lines[lines.length - 1] === '') lines.pop();
-    for (const [key, value] of pending) if (value) lines.push(`${key}=${value}`);
-    const temp = `${file}.tmp-${process.pid}-${Date.now()}`;
-    const fd = fs.openSync(temp, 'w', 0o600);
-    try {
-        fs.writeFileSync(fd, `${lines.join('\n')}\n`, 'utf8');
-        fs.fsyncSync(fd);
-    } finally {
-        fs.closeSync(fd);
-    }
-    fs.renameSync(temp, file);
-    fs.chmodSync(file, 0o600);
+  }
+  for (const [key, value] of pending) {
+    if (value === null || value === undefined || value === '') continue;
+    out.push(`${key}=${value}`);
+  }
+  return out.join('\n') + '\n';
+}
+
+/**
+ * Atomically merge `updates` into the credential file. Keys set to null or ''
+ * are removed. Unknown keys and comments are preserved.
+ */
+export function writeCredentialFile(file, updates) {
+  for (const value of Object.values(updates)) {
+    if (typeof value === 'string' && /[\r\n]/.test(value)) throw new Error('Credential values cannot contain newlines.');
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const current = readCredentialFile(file);
+  const content = serialize(current.text, updates);
+  const temp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  const fd = fs.openSync(temp, 'w', 0o600);
+  try {
+    fs.writeFileSync(fd, content, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(temp, file);
+  fs.chmodSync(file, 0o600);
+  return readCredentialFile(file);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Cross-process lock (an O_EXCL lock file next to the credentials). Held
- * while a refresh token is exchanged, so only one process ever spends it.
- * A lock older than staleMs (its holder died) is broken.
+ * Cross-process mutual exclusion around token refresh. Several MCP processes
+ * (one per agent session) can share one credential file, and Questrade
+ * refresh tokens work once, so two simultaneous refreshes would lock each
+ * other out.
  */
-export async function withFileLock(lockPath, fn, { timeoutMs = 30_000, staleMs = 60_000, pollMs = 50 } = {}) {
-    fs.mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 });
-    const deadline = Date.now() + timeoutMs;
-    let fd;
-    for (;;) {
-        try {
-            fd = fs.openSync(lockPath, 'wx', 0o600);
-            fs.writeSync(fd, `${process.pid}\n`);
-            break;
-        } catch (error) {
-            if (error.code !== 'EEXIST') throw error;
-            try {
-                if (Date.now() - fs.statSync(lockPath).mtimeMs > staleMs) {
-                    fs.rmSync(lockPath, { force: true });
-                    continue;
-                }
-            } catch {
-                continue; // released between open and stat
-            }
-            if (Date.now() > deadline) throw new Error(`Timed out waiting for the credentials lock ${lockPath}`);
-            await sleep(pollMs);
-        }
-    }
+export async function withFileLock(lockPath, fn, { timeoutMs = 30_000, staleMs = 60_000, pollMs = 100 } = {}) {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + timeoutMs;
+  let fd;
+  for (;;) {
     try {
-        return await fn();
-    } finally {
-        fs.closeSync(fd);
-        fs.rmSync(lockPath, { force: true });
+      fd = fs.openSync(lockPath, 'wx', 0o600);
+      fs.writeSync(fd, `${process.pid}\n`);
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        const age = Date.now() - fs.statSync(lockPath).mtimeMs;
+        if (age > staleMs) {
+          fs.rmSync(lockPath, { force: true });
+          continue;
+        }
+      } catch {
+        continue; // vanished between open and stat
+      }
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for credential lock ${lockPath}`);
+      await sleep(pollMs);
     }
+  }
+  try {
+    return await fn();
+  } finally {
+    fs.closeSync(fd);
+    fs.rmSync(lockPath, { force: true });
+  }
 }

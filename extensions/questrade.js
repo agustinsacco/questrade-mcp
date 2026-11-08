@@ -4,40 +4,39 @@
  * session, and the questrade-portfolio skill from ./skills. The user then
  * signs in once with `questrade-mcp login`. An mcp.json server named
  * "questrade" takes precedence over this registration.
- *
- * Imports nothing outside Node's standard library and this package's own
- * auth helpers, so it loads even before `npm install` has run.
  */
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { HOST, cli } from '../src/cli.js';
-import { credentialsFile, readCredentials } from '../src/auth/credentials.js';
+import { loadConfig } from '../src/config.js';
+import { TokenProvider } from '../src/auth/tokens.js';
 
 const BIN = fileURLToPath(new URL('../bin/questrade-mcp.js', import.meta.url));
 
 /** Run the server with the same Node as pi when pi runs on Node; else whatever `node` is on PATH. */
 export function nodeCommand(execPath = process.execPath) {
-    return /^node(\.exe)?$/i.test(path.basename(execPath)) ? execPath : 'node';
+  return /^node(\.exe)?$/i.test(path.basename(execPath)) ? execPath : 'node';
 }
 
 export const DESCRIPTION =
-    'Questrade brokerage, read-only: accounts, positions, balances, activity, orders, quotes, candles, symbol comparison and technical screens. ' +
-    `Load skill questrade-portfolio first; sign-in: the user runs \`${cli('login')}\` in a terminal on ${HOST}`;
+  'Questrade brokerage, read-only: accounts, balances, positions, activities, executions, orders, quotes, option chains, candles, technicals and portfolio reports. ' +
+  `Load skill questrade-portfolio first; sign-in: the user runs \`${cli('login')}\` in a terminal on ${HOST}`;
 
-/** A one-line notice when no refresh token is stored on this machine; undefined once one is. */
+/** A one-line notice when nobody has signed in on this machine yet; undefined once credentials exist. */
 export function signInNotice(env = process.env) {
-    try {
-        if (readCredentials(credentialsFile(env)).values.QUESTRADE_REFRESH_TOKEN) return undefined;
-    } catch {
-        return undefined;
-    }
-    return `Questrade is not signed in on ${HOST}. In a terminal there, run: ${cli('login')}`;
+  try {
+    const config = loadConfig(env);
+    if (new TokenProvider(config, { env }).describe().mode !== 'none') return undefined;
+  } catch {
+    return undefined;
+  }
+  return `Questrade is not signed in on ${HOST}. In a terminal there, run: ${cli('login')}`;
 }
 
 export default function questrade(pi) {
-    pi.registerMcpServer('questrade', { command: nodeCommand(), args: [BIN], exposure: 'codemode', description: DESCRIPTION });
-    pi.on('session_start', async (_event, ctx) => {
-        const notice = signInNotice();
-        if (notice && ctx?.hasUI) ctx.ui.notify(notice, 'info');
-    });
+  pi.registerMcpServer('questrade', { command: nodeCommand(), args: [BIN], exposure: 'codemode', description: DESCRIPTION });
+  pi.on('session_start', async (_event, ctx) => {
+    const notice = signInNotice();
+    if (notice && ctx?.hasUI) ctx.ui.notify(notice, 'info');
+  });
 }
