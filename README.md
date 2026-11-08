@@ -276,6 +276,23 @@ one where it matters:
 The token tests run six real processes at once to prove only one spends the
 refresh token.
 
+### Releasing
+
+CI (`.github/workflows/ci.yml`) runs the tests on Node 20, 22 and 24 for every
+push and pull request. When a push to `master` has a `package.json` version
+that isn't on npm yet, and the tests pass, CI publishes it with provenance,
+then tags `v<version>` and creates a GitHub release. To release:
+
+```bash
+npm version minor --no-git-tag-version   # or patch / major
+npm run docs                             # TOOLS.md records the version
+git commit -am "x.y.z: what changed" && git push
+```
+
+A version with a hyphen, such as `1.2.0-beta.1`, goes to the `next` dist-tag.
+CI publishes through npm trusted publishing (`npm trust github`) or, failing
+that, the `NPM_TOKEN` repository secret.
+
 ### Migrating from 1.x
 
 2.0 matches [wave-mcp](https://github.com/agustinsacco/wave-mcp): the same
