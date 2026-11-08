@@ -50,6 +50,9 @@ jobs:
 
       - name: Is this version already on npm?
         id: check
+        env:
+          # Ask anonymously: setup-node's placeholder token makes npm answer "not found".
+          NPM_CONFIG_USERCONFIG: /dev/null
         run: |
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
@@ -76,7 +79,8 @@ jobs:
       - if: steps.check.outputs.publish == 'true'
         name: Publish to npm
         env:
-          # Unused once a trusted publisher is configured (npm trust github): npm then uses OIDC.
+          # Trusted publishing (npm trust github ... --file ci.yml) needs no secret: npm
+          # uses this job's OIDC identity. NPM_TOKEN is only a fallback.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version='${{ steps.check.outputs.version }}'

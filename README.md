@@ -290,8 +290,10 @@ git commit -am "x.y.z: what changed" && git push
 ```
 
 A version with a hyphen, such as `1.2.0-beta.1`, goes to the `next` dist-tag.
-CI publishes through npm trusted publishing (`npm trust github`) or, failing
-that, the `NPM_TOKEN` repository secret.
+CI publishes through npm trusted publishing, so no npm token is stored in
+GitHub. It was set up once with
+`npm trust github @saccolabs/questrade-mcp --repo agustinsacco/questrade-mcp --file ci.yml --allow-publish`.
+A `NPM_TOKEN` repository secret also works, as a fallback.
 
 ### Migrating from 1.x
 
