@@ -6,7 +6,9 @@ import { QuestradeClient } from "./api/QuestradeClient.js";
 import { AccountTools } from "./tools/AccountTools.js";
 import { MarketTools } from "./tools/MarketTools.js";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
+import { HOST, cli } from "./cli.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const storageDir = path.join(__dirname, "../data");
@@ -19,17 +21,32 @@ const marketTools = new MarketTools(client);
 // Start background keep-alive
 tokenManager.startKeepAlive();
 
+const { version } = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
+
+const INSTRUCTIONS = [
+    `Read-only Questrade brokerage data; no tool places, changes or cancels orders. If a tool says no token is configured or the token was rejected, the user signs in by running \`${cli("login")}\` in a terminal on ${HOST}; never ask for the token in the chat.`,
+    "Start with qt_get_accounts and pass accountId to account tools when there are several accounts (they default to the first).",
+    "Quotes, candles and technicals take numeric symbol IDs: get them from qt_lookup_symbol. Times are ISO 8601 with an offset, e.g. 2026-01-02T00:00:00-05:00. Candles: at most 2000 per request, so match the interval to the range.",
+].join("\n");
+
 const server = new Server({
     name: "questrade-mcp",
-    version: "1.0.0",
+    version,
 }, {
     capabilities: {
         tools: {},
     },
+    instructions: INSTRUCTIONS,
 });
 
+// Every tool only reads; hosts use these hints to skip write confirmations.
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
+    tools: TOOLS.map((tool) => ({ ...tool, annotations: READ_ONLY })),
+}));
+
+const TOOLS = [
         {
             name: "qt_get_accounts",
             description: "Get all Questrade accounts",
@@ -161,8 +178,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 required: ["symbolIds", "startTime", "endTime"]
             }
         },
-    ]
-}));
+];
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
@@ -186,8 +202,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
+        // Questrade explains rejections in the body ({ code, message }).
+        const detail = error.response?.data?.message;
         return {
-            content: [{ type: "text", text: `Error: ${error.message}` }],
+            content: [{ type: "text", text: `Error: ${error.message}${detail ? `: ${detail}` : ""}` }],
             isError: true
         };
     }

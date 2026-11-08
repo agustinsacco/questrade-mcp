@@ -1,0 +1,43 @@
+/**
+ * pi package entry. `pi install <this package>` (npm, git or a local path)
+ * loads this extension, which registers the questrade MCP server for every pi
+ * session, and the questrade-portfolio skill from ./skills. The user then
+ * signs in once with `questrade-mcp login`. An mcp.json server named
+ * "questrade" takes precedence over this registration.
+ *
+ * Imports nothing outside Node's standard library and this package's own
+ * auth helpers, so it loads even before `npm install` has run.
+ */
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { HOST, cli } from '../src/cli.js';
+import { credentialsFile, readCredentials } from '../src/auth/credentials.js';
+
+const BIN = fileURLToPath(new URL('../bin/questrade-mcp.js', import.meta.url));
+
+/** Run the server with the same Node as pi when pi runs on Node; else whatever `node` is on PATH. */
+export function nodeCommand(execPath = process.execPath) {
+    return /^node(\.exe)?$/i.test(path.basename(execPath)) ? execPath : 'node';
+}
+
+export const DESCRIPTION =
+    'Questrade brokerage, read-only: accounts, positions, balances, activity, orders, quotes, candles, symbol comparison and technical screens. ' +
+    `Load skill questrade-portfolio first; sign-in: the user runs \`${cli('login')}\` in a terminal on ${HOST}`;
+
+/** A one-line notice when no refresh token is stored on this machine; undefined once one is. */
+export function signInNotice(env = process.env) {
+    try {
+        if (readCredentials(credentialsFile(env)).values.QUESTRADE_REFRESH_TOKEN) return undefined;
+    } catch {
+        return undefined;
+    }
+    return `Questrade is not signed in on ${HOST}. In a terminal there, run: ${cli('login')}`;
+}
+
+export default function questrade(pi) {
+    pi.registerMcpServer('questrade', { command: nodeCommand(), args: [BIN], exposure: 'codemode', description: DESCRIPTION });
+    pi.on('session_start', async (_event, ctx) => {
+        const notice = signInNotice();
+        if (notice && ctx?.hasUI) ctx.ui.notify(notice, 'info');
+    });
+}

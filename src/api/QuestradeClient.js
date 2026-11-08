@@ -16,14 +16,16 @@ export class QuestradeClient {
             (response) => response,
             async (error) => {
                 const originalRequest = error.config;
-                if (error.response?.status === 401 && !originalRequest._retry) {
+                if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
                     originalRequest._retry = true;
-                    try {
-                        const newToken = await this.tokenManager.forceRefresh();
-                        originalRequest.headers.Authorization = `Bearer ${newToken.access_token}`;
-                        originalRequest.baseURL = newToken.api_server;
-                        return this.client(originalRequest);
-                    } catch (e) {}
+                    // Refresh once; if another server process already stored a
+                    // new token, it is reused. A failed refresh surfaces its own
+                    // message (it says how to sign in again).
+                    const rejected = String(originalRequest.headers?.Authorization || '').replace(/^Bearer\s+/, '');
+                    const newToken = await this.tokenManager.forceRefresh(rejected);
+                    originalRequest.headers.Authorization = `Bearer ${newToken.access_token}`;
+                    originalRequest.baseURL = newToken.api_server;
+                    return this.client(originalRequest);
                 }
                 return Promise.reject(error);
             }

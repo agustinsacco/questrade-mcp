@@ -1,12 +1,48 @@
 {
   "name": "questrade-mcp",
-  "version": "1.0.0",
-  "description": "Questrade Portfolio Management for Tars",
+  "version": "1.1.0",
+  "description": "Read-only Questrade MCP server: accounts, positions, balances, activity, orders, quotes, candles and technical analysis. Also a pi package (server + skill).",
   "type": "module",
   "main": "src/main.js",
+  "bin": {
+    "questrade-mcp": "bin/questrade-mcp.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "questrade",
+    "investing",
+    "pi-package"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agustinsacco/questrade-mcp.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "src",
+    "extensions",
+    "skills",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
-    "test:auth": "node src/auth-check.js",
-    "start": "node src/main.js"
+    "start": "node bin/questrade-mcp.js",
+    "test": "node --test test/*.test.js",
+    "test:auth": "node bin/questrade-mcp.js check"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/questrade.js"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
